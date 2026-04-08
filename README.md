@@ -1,44 +1,69 @@
 # ANN Assignment
 
-This project trains and evaluates a LeNet-5 style convolutional neural network on the MNIST handwritten digits dataset using TensorFlow.
-
-## What it does
-
-- Loads the MNIST dataset.
-- Normalizes pixel values from `0-255` to `0-1`.
-- Expands the image shape to include a channel dimension.
-- Pads `28x28` images to `32x32` for LeNet-5 compatibility.
-- Builds a LeNet-5 inspired CNN with convolution, average pooling, and dense layers.
-- Trains the model, evaluates it on the test set, and prints sample predictions.
+This project trains a LeNet-5 style convolutional neural network on MNIST with TensorFlow, saves the trained model, and predicts custom handwritten digit images.
 
 ## Requirements
 
-- [Python 3.10.11](https://www.python.org/downloads/windows/)
-- Windows PowerShell or Command Prompt
+- Windows PowerShell 5.1 or PowerShell 7+
+- Python 3.10+
 
 ## Setup
 
-Run the Windows setup script from the project root:
+Run the PowerShell bootstrap script from the repository root:
 
 ```powershell
 .\setup.ps1
 ```
 
-The script will:
-
-- Create a virtual environment in `venv` if it does not already exist.
-- Upgrade `pip`.
-- Install the packages listed in `requirements.txt`.
-
-## Run
-
-After setup, run the training script with:
+If your execution policy blocks scripts, run it like this instead:
 
 ```powershell
-.\venv\Scripts\python.exe .\main.py
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
-## Notes
+The script creates `venv`, upgrades `pip`, installs the pinned packages from `requirements.txt`, and activates the environment in the current session when possible.
 
-- The first run may download the MNIST dataset automatically.
-- TensorFlow may print deprecation warnings from internal libraries. These do not stop the program from running.
+## Train The Model
+
+Train the model, evaluate it on the MNIST test split, and save the trained artifacts:
+
+```powershell
+python main.py
+```
+
+You can force retraining with custom hyperparameters:
+
+```powershell
+python main.py --train --epochs 10 --batch-size 128
+```
+
+Saved artifacts are written to:
+
+- `artifacts\lenet5_mnist.keras`
+- `artifacts\lenet5_mnist.weights.h5`
+
+## Evaluate A Saved Model
+
+If the saved artifacts already exist, evaluate them without retraining:
+
+```powershell
+python main.py --evaluate
+```
+
+## Predict Custom Digits
+
+Pass one image, a folder, or a glob pattern to classify custom handwritten digits:
+
+```powershell
+python main.py .\images\7.png
+python main.py .\images\*.png
+```
+
+The inference pipeline converts the image to grayscale, applies autocontrast, centers the digit, pads it to the LeNet-5 input size, and uses a simple inversion heuristic for white-background handwriting.
+
+For best results, use a single centered digit per image with minimal background clutter.
+
+## Project Files
+
+- `main.py` contains training, saving, evaluation, and custom-image prediction.
+- `setup.ps1` bootstraps the Windows virtual environment and installs dependencies.
