@@ -1,6 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1776022868.6197 "c:/code/python/ann-assignment/report/report.tex" "report.pdf" "report" 1776022869.61167 0
-  "../images/lenet-5-cnn-architecture.jpg" 1776021805 97140 b83028dcfee8bbe2855c27e6131c9855 ""
+["pdflatex"] 1776023197.39769 "c:/code/python/ann-assignment/report/report.tex" "report.pdf" "report" 1776023198.58805 0
+  "../images/letnet5.jpg" 1776023144 33250 5de309f1f4198051dd48aa4848d07fd9 ""
   "C:/Users/nandu/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map" 1776022501 82507 a9eef8696c92627b87e9975edea03b2a ""
   "C:/Users/nandu/AppData/Local/MiKTeX/miktex/data/le/pdftex/pdflatex.fmt" 1773774366 13333849 40530a91a4c9d8c5bba40e5eaa2731cc ""
   "C:/Users/nandu/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/lm/lm-ec.enc" 1256929440 2375 baa924870cfb487815765f9094cf3728 ""
@@ -87,10 +87,10 @@
   "C:/Users/nandu/AppData/Local/Programs/MiKTeX/tex/latex/tools/array.sty" 1761901070 15651 9d7c62df82cb29a555c00550babfe364 ""
   "C:/Users/nandu/AppData/Local/Programs/MiKTeX/tex/latex/tools/tabularx.sty" 1761901070 7243 a2c17f18e2c9b702b84fad03d5f9c78b ""
   "C:/Users/nandu/AppData/Local/Programs/MiKTeX/tex/latex/url/url.sty" 1388490452 12796 8edb7d69a20b857904dd0ea757c14ec9 ""
-  "c:/code/python/ann-assignment/report/report.tex" 1776022867 5521 920c91defa490295546d08c90e4c9ca2 ""
-  "report.aux" 1776022869 1306 7ba0162b0002ad91bb3c3352e0555e7a "pdflatex"
-  "report.out" 1776022869 385 f97fe3d647e64deb242c04c59718745b "pdflatex"
-  "report.tex" 1776022867 5521 920c91defa490295546d08c90e4c9ca2 ""
+  "c:/code/python/ann-assignment/report/report.tex" 1776023196 5504 a72d0d841a3ca19a907d2cdececfc5e8 ""
+  "report.aux" 1776023198 1306 7ba0162b0002ad91bb3c3352e0555e7a "pdflatex"
+  "report.out" 1776023198 385 f97fe3d647e64deb242c04c59718745b "pdflatex"
+  "report.tex" 1776023196 5504 a72d0d841a3ca19a907d2cdececfc5e8 ""
   (generated)
   "report.aux"
   "report.log"
