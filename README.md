@@ -1,6 +1,6 @@
 # ANN Assignment
 
-This project trains a LeNet-5 style convolutional neural network on MNIST with TensorFlow, saves the trained model, and predicts custom handwritten digit images.
+This project implements a LeNet-5 style convolutional neural network in PyTorch for MNIST digit recognition. The script can train the model, evaluate saved weights, and run inference on a custom handwritten digit image.
 
 ## Requirements
 
@@ -21,49 +21,60 @@ If your execution policy blocks scripts, run it like this instead:
 powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
-The script creates `venv`, upgrades `pip`, installs the pinned packages from `requirements.txt`, and activates the environment in the current session when possible.
+The script creates `venv`, upgrades `pip`, installs the packages from `requirements.txt`, and activates the environment in the current session when possible.
 
 ## Train The Model
 
-Train the model, evaluate it on the MNIST test split, and save the trained artifacts:
+Train LeNet-5 on MNIST and save the learned weights:
 
 ```powershell
-python main.py
+python main.py train
 ```
 
-You can force retraining with custom hyperparameters:
+Training uses the defaults defined in `main.py`, including the MNIST normalization constants, Adam, a step learning-rate scheduler, and 30 epochs.
+
+When training finishes, the model weights are saved to:
+
+- `lenet5_weights.pth`
+- `lenet5_weights.json`
+
+The JSON file also includes the training history for each epoch.
+
+## Evaluate Saved Weights
+
+Evaluate a saved checkpoint on the MNIST test split:
 
 ```powershell
-python main.py --train --epochs 10 --batch-size 128
+python main.py evaluate
 ```
 
-Saved artifacts are written to:
-
-- `artifacts\lenet5_mnist.keras`
-- `artifacts\lenet5_mnist.weights.h5`
-
-## Evaluate A Saved Model
-
-If the saved artifacts already exist, evaluate them without retraining:
+To load the JSON snapshot instead of the PyTorch checkpoint, add `--weights json`:
 
 ```powershell
-python main.py --evaluate
+python main.py evaluate --weights json
 ```
 
-## Predict Custom Digits
+## Predict A Custom Digit
 
-Pass one image, a folder, or a glob pattern to classify custom handwritten digits:
+Run inference on a single image file:
 
 ```powershell
-python main.py .\images\7.png
-python main.py .\images\*.png
+python main.py test --image .\images\9.png
 ```
 
-The inference pipeline converts the image to grayscale, applies autocontrast, centers the digit, pads it to the LeNet-5 input size, and uses a simple inversion heuristic for white-background handwriting.
+If needed, you can also load the JSON snapshot during inference:
 
-For best results, use a single centered digit per image with minimal background clutter.
+```powershell
+python main.py test --image .\images\9.png --weights json
+```
+
+The inference pipeline converts the image to grayscale, inverts light backgrounds automatically, crops the foreground digit, adds padding, resizes to 28x28, and normalizes using the MNIST statistics expected by the model.
+
+For best results, use a single centered digit with minimal background clutter.
 
 ## Project Files
 
-- `main.py` contains training, saving, evaluation, and custom-image prediction.
+- `main.py` contains the model definition, training loop, evaluation helper, checkpoint saving/loading, and custom image prediction.
 - `setup.ps1` bootstraps the Windows virtual environment and installs dependencies.
+- `requirements.txt` lists the Python packages used by the project.
+- `data/MNIST` is where the MNIST dataset is downloaded.

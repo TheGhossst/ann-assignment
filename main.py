@@ -1,305 +1,373 @@
-from __future__ import annotations
+# ── Network architecture ───────────────────────────────────
+IN_CHANNELS       = 1        # Greyscale images  → 1 channel
+NUM_CLASSES       = 10       # Digits 0-9
 
-import argparse
-import glob
-from pathlib import Path
-from typing import Sequence
+# LeNet-5 layer sizes
+CONV1_OUT         = 6        # C1 : feature maps after 1st conv
+CONV2_OUT         = 16       # C3 : feature maps after 2nd conv
+CONV3_OUT         = 120      # C5 : fully-connected conv layer
+FC1_OUT           = 84       # F6 : fully-connected hidden layer
 
+KERNEL_SIZE       = 5        # All convolution kernels are 5×5
+POOL_SIZE         = 2        # Average-pooling window  2×2
+POOL_STRIDE       = 2        # Non-overlapping pooling
+
+# ── Training hyper-parameters ─────────────────────────────
+BATCH_SIZE        = 64       # Mini-batch size
+LEARNING_RATE     = 1e-3     # Adam initial learning rate
+NUM_EPOCHS        = 30       # Training epochs
+WEIGHT_DECAY      = 1e-4     # L2 regularisation coefficient
+LR_STEP_SIZE      = 5        # Decay LR every N epochs
+LR_GAMMA          = 0.5      # LR multiplier at each step
+
+# ── Normalisation constants (MNIST statistics) ────────────
+NORM_MEAN         = (0.1307,)
+NORM_STD          = (0.3081,)
+
+# ── Persistence ───────────────────────────────────────────
+WEIGHTS_PT_PATH   = "lenet5_weights.pth"   # PyTorch checkpoint
+WEIGHTS_JSON_PATH = "lenet5_weights.json"  # JSON snapshot
+
+import os, sys, json, time, argparse
 import numpy as np
-import tensorflow as tf
-from PIL import Image, ImageOps
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+from PIL import Image
 
 
-ARTIFACTS_DIR = Path("artifacts")
-DEFAULT_MODEL_PATH = ARTIFACTS_DIR / "lenet5_mnist.keras"
-DEFAULT_WEIGHTS_PATH = ARTIFACTS_DIR / "lenet5_mnist.weights.h5"
-SUPPORTED_IMAGE_SUFFIXES = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
+class LeNet5(nn.Module):
+    """
+    Classic LeNet-5 adapted for MNIST (28×28 input, padding on C1
+    so spatial size is preserved before the first pooling step).
+
+    Layer flow
+    ----------
+    Input  : (N, 1, 28, 28)
+    C1     : Conv 5×5, pad=2  → (N,  6, 28, 28)  + Tanh
+    S2     : AvgPool 2×2      → (N,  6, 14, 14)
+    C3     : Conv 5×5         → (N, 16, 10, 10)  + Tanh
+    S4     : AvgPool 2×2      → (N, 16,  5,  5)
+    C5     : Conv 5×5         → (N, 120,  1,  1) + Tanh  (= FC)
+    Flatten: (N, 120)
+    F6     : Linear 120→84    + Tanh
+    Output : Linear 84→10
+    """
+
+    def __init__(self):
+        super(LeNet5, self).__init__()
+
+        self.feature_extractor = nn.Sequential(
+            nn.Conv2d(IN_CHANNELS, CONV1_OUT,
+                      kernel_size=KERNEL_SIZE, padding=2),
+            nn.Tanh(),
+            nn.AvgPool2d(POOL_SIZE, POOL_STRIDE),
+            nn.Conv2d(CONV1_OUT, CONV2_OUT,
+                      kernel_size=KERNEL_SIZE),
+            nn.Tanh(),
+            nn.AvgPool2d(POOL_SIZE, POOL_STRIDE),
+
+            nn.Conv2d(CONV2_OUT, CONV3_OUT,
+                      kernel_size=KERNEL_SIZE),
+            nn.Tanh(),
+        )
 
 
-def set_random_seed(seed: int = 42) -> None:
-	np.random.seed(seed)
-	tf.random.set_seed(seed)
+        self.classifier = nn.Sequential(
+            nn.Linear(CONV3_OUT, FC1_OUT),
+            nn.Tanh(),
+
+            nn.Linear(FC1_OUT, NUM_CLASSES),
+        )
+
+    def forward(self, x):
+        x = self.feature_extractor(x)
+        x = x.view(x.size(0), -1)   # flatten
+        x = self.classifier(x)
+        return x
 
 
-def load_mnist_dataset() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-	(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+def get_data_loaders():
+    """Download MNIST and return (train_loader, test_loader)."""
+    transform = transforms.Compose([
+        transforms.Resize((28, 28)),
+        transforms.ToTensor(),
+        transforms.Normalize(NORM_MEAN, NORM_STD),
+    ])
 
-	x_train = np.pad(x_train, ((0, 0), (2, 2), (2, 2)), mode="constant")
-	x_test = np.pad(x_test, ((0, 0), (2, 2), (2, 2)), mode="constant")
+    train_set = datasets.MNIST(root="./data", train=True,
+                               download=True, transform=transform)
+    test_set  = datasets.MNIST(root="./data", train=False,
+                               download=True, transform=transform)
 
-	x_train = x_train.astype(np.float32) / 255.0
-	x_test = x_test.astype(np.float32) / 255.0
-
-	x_train = x_train[..., np.newaxis]
-	x_test = x_test[..., np.newaxis]
-
-	return x_train, y_train, x_test, y_test
-
-
-def build_lenet5_model(
-	input_shape: tuple[int, int, int] = (32, 32, 1),
-	num_classes: int = 10,
-	learning_rate: float = 1e-3,
-) -> tf.keras.Model:
-	model = tf.keras.Sequential(
-		[
-			tf.keras.layers.Input(shape=input_shape),
-			tf.keras.layers.Conv2D(6, kernel_size=5, activation="tanh", padding="valid"),
-			tf.keras.layers.AveragePooling2D(pool_size=2, strides=2),
-			tf.keras.layers.Conv2D(16, kernel_size=5, activation="tanh", padding="valid"),
-			tf.keras.layers.AveragePooling2D(pool_size=2, strides=2),
-			tf.keras.layers.Flatten(),
-			tf.keras.layers.Dense(120, activation="tanh"),
-			tf.keras.layers.Dense(84, activation="tanh"),
-			tf.keras.layers.Dense(num_classes, activation="softmax"),
-		]
-	)
-
-	model.compile(
-		optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-		loss="sparse_categorical_crossentropy",
-		metrics=["accuracy"],
-	)
-	return model
+    train_loader = DataLoader(train_set, batch_size=BATCH_SIZE,
+                              shuffle=True,  num_workers=2,
+                              pin_memory=True)
+    test_loader  = DataLoader(test_set,  batch_size=BATCH_SIZE,
+                              shuffle=False, num_workers=2,
+                              pin_memory=True)
+    return train_loader, test_loader
 
 
-def train_model(
-	model: tf.keras.Model,
-	x_train: np.ndarray,
-	y_train: np.ndarray,
-	epochs: int,
-	batch_size: int,
-) -> tf.keras.callbacks.History:
-	callbacks = [
-		tf.keras.callbacks.EarlyStopping(
-			monitor="val_accuracy",
-			patience=3,
-			restore_best_weights=True,
-		)
-	]
+def train(model, device, train_loader, test_loader):
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(),
+                           lr=LEARNING_RATE,
+                           weight_decay=WEIGHT_DECAY)
+    scheduler = optim.lr_scheduler.StepLR(optimizer,
+                                          step_size=LR_STEP_SIZE,
+                                          gamma=LR_GAMMA)
 
-	history = model.fit(
-		x_train,
-		y_train,
-		validation_split=0.1,
-		epochs=epochs,
-		batch_size=batch_size,
-		verbose=2,
-		callbacks=callbacks,
-	)
-	return history
+    print(f"\n{'='*55}")
+    print(f"  Training LeNet-5 on {device}")
+    print(f"  Epochs: {NUM_EPOCHS}  |  Batch: {BATCH_SIZE}"
+          f"  |  LR: {LEARNING_RATE}")
+    print(f"{'='*55}\n")
 
+    history = []
 
-def save_model_artifacts(
-	model: tf.keras.Model,
-	model_path: Path = DEFAULT_MODEL_PATH,
-	weights_path: Path = DEFAULT_WEIGHTS_PATH,
-) -> None:
-	model_path.parent.mkdir(parents=True, exist_ok=True)
-	model.save(model_path)
-	model.save_weights(weights_path)
+    for epoch in range(1, NUM_EPOCHS + 1):
+        model.train()
+        running_loss   = 0.0
+        running_correct = 0
 
+        t0 = time.time()
+        for images, labels in train_loader:
+            images, labels = images.to(device), labels.to(device)
 
-def load_saved_model(
-	model_path: Path = DEFAULT_MODEL_PATH,
-	weights_path: Path = DEFAULT_WEIGHTS_PATH,
-) -> tf.keras.Model | None:
-	if model_path.exists():
-		return tf.keras.models.load_model(model_path)
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss    = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
 
-	if weights_path.exists():
-		model = build_lenet5_model()
-		model.load_weights(weights_path)
-		return model
+            running_loss    += loss.item() * images.size(0)
+            preds            = outputs.argmax(dim=1)
+            running_correct += (preds == labels).sum().item()
 
-	return None
+        scheduler.step()
 
+        train_loss = running_loss    / len(train_loader.dataset)
+        train_acc  = running_correct / len(train_loader.dataset)
 
-def preprocess_custom_image(image_path: str | Path) -> np.ndarray:
-	path = Path(image_path)
-	if not path.exists():
-		raise FileNotFoundError(f"Image not found: {path}")
+        val_loss, val_acc = evaluate(model, device,
+                                     test_loader, criterion)
 
-	image = Image.open(path).convert("L")
-	image = ImageOps.autocontrast(image)
-	image = ImageOps.contain(image, (28, 28), method=Image.Resampling.LANCZOS)
+        elapsed = time.time() - t0
+        lr_now  = scheduler.get_last_lr()[0]
 
-	canvas = Image.new("L", (28, 28), color=0)
-	left = (28 - image.width) // 2
-	top = (28 - image.height) // 2
-	canvas.paste(image, (left, top))
+        print(f"Epoch [{epoch:02d}/{NUM_EPOCHS}]  "
+              f"Train Loss: {train_loss:.4f}  Acc: {train_acc*100:.2f}%  |  "
+              f"Val Loss: {val_loss:.4f}  Acc: {val_acc*100:.2f}%  |  "
+              f"LR: {lr_now:.6f}  ({elapsed:.1f}s)")
 
-	array = np.asarray(canvas, dtype=np.float32) / 255.0
-	border_pixels = np.concatenate(
-		[
-			array[:3, :].ravel(),
-			array[-3:, :].ravel(),
-			array[:, :3].ravel(),
-			array[:, -3:].ravel(),
-		]
-	)
+        history.append({
+            "epoch"     : epoch,
+            "train_loss": round(train_loss, 6),
+            "train_acc" : round(train_acc,  6),
+            "val_loss"  : round(val_loss,   6),
+            "val_acc"   : round(val_acc,    6),
+        })
 
-	if border_pixels.mean() > array.mean():
-		array = 1.0 - array
+    print(f"\n  Final validation accuracy: {val_acc*100:.2f}%\n")
+    return history
 
-	array = np.pad(array, ((2, 2), (2, 2)), mode="constant")
-	return array[..., np.newaxis]
+def evaluate(model, device, loader, criterion=None):
+    """Return (avg_loss, accuracy)."""
+    if criterion is None:
+        criterion = nn.CrossEntropyLoss()
 
+    model.eval()
+    total_loss    = 0.0
+    total_correct = 0
 
-def expand_image_inputs(image_inputs: Sequence[str]) -> list[Path]:
-	resolved_paths: list[Path] = []
-	seen: set[str] = set()
+    with torch.no_grad():
+        for images, labels in loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            loss    = criterion(outputs, labels)
+            total_loss    += loss.item() * images.size(0)
+            preds          = outputs.argmax(dim=1)
+            total_correct += (preds == labels).sum().item()
 
-	for item in image_inputs:
-		matches: list[Path] = []
-		if any(character in item for character in "*?[]"):
-			matches = [Path(match) for match in glob.glob(item, recursive=True)]
-		else:
-			candidate = Path(item)
-			if candidate.is_dir():
-				matches = [
-					child
-					for child in sorted(candidate.iterdir())
-					if child.is_file() and child.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES
-				]
-			else:
-				matches = [candidate]
-
-		for path in matches:
-			key = str(path.resolve())
-			if path.is_file() and key not in seen:
-				seen.add(key)
-				resolved_paths.append(path)
-
-	return resolved_paths
+    avg_loss = total_loss    / len(loader.dataset)
+    accuracy = total_correct / len(loader.dataset)
+    return avg_loss, accuracy
 
 
-def predict_image(model: tf.keras.Model, image_path: str | Path) -> tuple[int, float, np.ndarray]:
-	sample = preprocess_custom_image(image_path)
-	probabilities = model.predict(sample[np.newaxis, ...], verbose=0)[0]
-	digit = int(np.argmax(probabilities))
-	confidence = float(probabilities[digit])
-	return digit, confidence, probabilities
+# ─────────────────────────────────────────────────────────
+#  Saving Weights
+# ─────────────────────────────────────────────────────────
+def save_weights_pt(model):
+    """Save full model state-dict as a .pth file."""
+    torch.save(model.state_dict(), WEIGHTS_PT_PATH)
+    print(f"  [✓] PyTorch weights saved → {WEIGHTS_PT_PATH}")
 
 
-def ensure_model(
-	force_train: bool,
-	default_train: bool,
-	epochs: int,
-	batch_size: int,
-	model_path: Path,
-	weights_path: Path,
-	x_train: np.ndarray,
-	y_train: np.ndarray,
-) -> tuple[tf.keras.Model, tf.keras.callbacks.History | None, bool]:
-	should_train = force_train or default_train or not (model_path.exists() or weights_path.exists())
+def save_weights_json(model, history=None):
+    """
+    Save every parameter tensor as a nested JSON file.
+    Large tensors are stored as lists of floats (rounded to 6 dp).
+    This is primarily for inspection / portability.
+    """
+    data = {"parameters": {}, "training_history": history or []}
 
-	if should_train:
-		model = build_lenet5_model()
-		history = train_model(model, x_train, y_train, epochs=epochs, batch_size=batch_size)
-		save_model_artifacts(model, model_path=model_path, weights_path=weights_path)
-		return model, history, True
+    for name, tensor in model.state_dict().items():
+        arr = tensor.cpu().numpy()
+        # Round to keep file size manageable
+        data["parameters"][name] = np.round(arr, 6).tolist()
 
-	model = load_saved_model(model_path=model_path, weights_path=weights_path)
-	if model is None:
-		model = build_lenet5_model()
-		history = train_model(model, x_train, y_train, epochs=epochs, batch_size=batch_size)
-		save_model_artifacts(model, model_path=model_path, weights_path=weights_path)
-		return model, history, True
+    with open(WEIGHTS_JSON_PATH, "w") as f:
+        json.dump(data, f, indent=2)
 
-	return model, None, False
+    size_kb = os.path.getsize(WEIGHTS_JSON_PATH) / 1024
+    print(f"  [✓] JSON weights saved  → {WEIGHTS_JSON_PATH}"
+          f"  ({size_kb:.0f} KB)")
 
 
-def parse_args() -> argparse.Namespace:
-	parser = argparse.ArgumentParser(
-		description="Train a LeNet-5 style CNN on MNIST and predict custom handwritten digits."
-	)
-	parser.add_argument("images", nargs="*", help="Custom digit image paths or glob patterns to predict.")
-	parser.add_argument("--epochs", type=int, default=5, help="Training epochs.")
-	parser.add_argument("--batch-size", type=int, default=128, help="Training batch size.")
-	parser.add_argument("--train", action="store_true", help="Force retraining even if a saved model exists.")
-	parser.add_argument("--evaluate", action="store_true", help="Evaluate on the MNIST test split.")
-	parser.add_argument("--model-path", type=Path, default=DEFAULT_MODEL_PATH, help="Path to the saved model file.")
-	parser.add_argument(
-		"--weights-path",
-		type=Path,
-		default=DEFAULT_WEIGHTS_PATH,
-		help="Path to the saved model weights file.",
-	)
-	return parser.parse_args()
+# ─────────────────────────────────────────────────────────
+#  Loading Weights
+# ─────────────────────────────────────────────────────────
+def load_weights(model, device, source="pt"):
+    """Load weights from .pth (default) or reconstructed from .json."""
+    if source == "json":
+        print(f"  Loading weights from {WEIGHTS_JSON_PATH} …")
+        with open(WEIGHTS_JSON_PATH, "r") as f:
+            data = json.load(f)
+        state = {k: torch.tensor(np.array(v))
+                 for k, v in data["parameters"].items()}
+        model.load_state_dict(state)
+    else:
+        print(f"  Loading weights from {WEIGHTS_PT_PATH} …")
+        model.load_state_dict(
+            torch.load(WEIGHTS_PT_PATH, map_location=device))
+
+    model.to(device)
+    print("  [✓] Weights loaded successfully.\n")
+    return model
 
 
-def main() -> int:
-	args = parse_args()
-	set_random_seed()
+# ─────────────────────────────────────────────────────────
+#  Single-Image Inference
+# ─────────────────────────────────────────────────────────
+def predict_image(model, device, image_path):
+    if not os.path.isfile(image_path):
+        print(f"  [✗] File not found: {image_path}")
+        return
 
-	saved_model_exists = args.model_path.exists() or args.weights_path.exists()
-	default_train = not args.images and not args.evaluate
-	should_train = args.train or default_train or not saved_model_exists
-	should_evaluate = args.evaluate or default_train
+    img = Image.open(image_path).convert("L")  # greyscale
 
-	x_train: np.ndarray | None = None
-	y_train: np.ndarray | None = None
-	x_test: np.ndarray | None = None
-	y_test: np.ndarray | None = None
+    # ── Auto-invert if background is light (MNIST = dark bg) ──
+    pixel_mean = np.array(img).mean()
+    if pixel_mean > 127:          # light background → invert
+        img = Image.fromarray(255 - np.array(img))
 
-	if should_train or should_evaluate:
-		x_train, y_train, x_test, y_test = load_mnist_dataset()
+    # ── Center the digit with padding (mimics MNIST style) ────
+    img_arr = np.array(img)
+    rows    = np.any(img_arr > 30, axis=1)
+    cols    = np.any(img_arr > 30, axis=0)
 
-	if should_train:
-		if x_train is None or y_train is None:
-			raise RuntimeError("Training data could not be loaded.")
+    if rows.any() and cols.any():
+        rmin, rmax = np.where(rows)[0][[0, -1]]
+        cmin, cmax = np.where(cols)[0][[0, -1]]
+        img_arr    = img_arr[rmin:rmax+1, cmin:cmax+1]  # tight crop
 
-		model, history, trained = ensure_model(
-			force_train=True,
-			default_train=False,
-			epochs=args.epochs,
-			batch_size=args.batch_size,
-			model_path=args.model_path,
-			weights_path=args.weights_path,
-			x_train=x_train,
-			y_train=y_train,
-		)
-	else:
-		model = load_saved_model(model_path=args.model_path, weights_path=args.weights_path)
-		if model is None:
-			raise RuntimeError(
-				"No saved model was found. Run with --train first to create artifacts."
-			)
-		history = None
-		trained = False
+    # Add 20% padding on each side, then resize to 28×28
+    h, w    = img_arr.shape
+    pad     = int(max(h, w) * 0.2)
+    padded  = np.pad(img_arr, pad, constant_values=0)
+    img     = Image.fromarray(padded)
 
-	if trained and history is not None:
-		final_val_accuracy = history.history.get("val_accuracy", [])
-		final_accuracy = history.history.get("accuracy", [])
-		if final_accuracy:
-			print(f"Training accuracy: {final_accuracy[-1]:.4f}")
-		if final_val_accuracy:
-			print(f"Validation accuracy: {max(final_val_accuracy):.4f}")
-		print(f"Saved model to: {args.model_path}")
-		print(f"Saved weights to: {args.weights_path}")
+    transform = transforms.Compose([
+        transforms.Resize((28, 28)),
+        transforms.ToTensor(),
+        transforms.Normalize(NORM_MEAN, NORM_STD),
+    ])
 
-	if should_evaluate:
-		if x_test is None or y_test is None:
-			raise RuntimeError("Test data could not be loaded.")
+    tensor = transform(img).unsqueeze(0).to(device)
 
-		loss, accuracy = model.evaluate(x_test, y_test, verbose=0)
-		print(f"Test loss: {loss:.4f}")
-		print(f"Test accuracy: {accuracy:.4f}")
+    model.eval()
+    with torch.no_grad():
+        logits     = model(tensor)
+        probs      = torch.softmax(logits, dim=1).squeeze()
+        pred_class = probs.argmax().item()
+        confidence = probs[pred_class].item() * 100
+        
+    print(f"\n  Image : {image_path}")
+    print(f"  ┌─────────────────────────────┐")
+    print(f"  │  Predicted digit : {pred_class}          │")
+    print(f"  │  Confidence      : {confidence:6.2f}%  │")
+    print(f"  └─────────────────────────────┘")
+    print(f"\n  Per-class probabilities:")
+    for digit, p in enumerate(probs.tolist()):
+        bar = "█" * int(p * 30)
+        print(f"    {digit}  {bar:<30}  {p*100:5.2f}%")
 
-	image_paths = expand_image_inputs(args.images)
-	if image_paths:
-		print("Custom image predictions:")
-		for image_path in image_paths:
-			digit, confidence, probabilities = predict_image(model, image_path)
-			top_indices = np.argsort(probabilities)[-3:][::-1]
-			top_summary = ", ".join(
-				f"{index}={probabilities[index]:.2%}" for index in top_indices
-			)
-			print(f"{image_path}: predicted {digit} ({confidence:.2%}) | top 3: {top_summary}")
 
-	return 0
+# ─────────────────────────────────────────────────────────
+#  CLI Entry-point
+# ─────────────────────────────────────────────────────────
+def main():
+    parser = argparse.ArgumentParser(
+        description="LeNet-5 MNIST – Train, Evaluate, or Test")
+
+    parser.add_argument(
+        "mode",
+        choices=["train", "evaluate", "test"],
+        help=(
+            "train    – train the model and save weights\n"
+            "evaluate – load saved weights and run on the test set\n"
+            "test     – predict a digit from a custom image file"
+        ),
+    )
+    parser.add_argument(
+        "--image", "-i",
+        type=str,
+        default=None,
+        help="Path to image file (required for 'test' mode)",
+    )
+    parser.add_argument(
+        "--weights", "-w",
+        choices=["pt", "json"],
+        default="pt",
+        help="Weight format to load: 'pt' (default) or 'json'",
+    )
+
+    args   = parser.parse_args()
+    device = torch.device("cuda" if torch.cuda.is_available()
+                          else "mps"  if torch.backends.mps.is_available()
+                          else "cpu")
+
+    model = LeNet5().to(device)
+
+    # ── Count parameters ──────────────────────────────────
+    total_params = sum(p.numel() for p in model.parameters()
+                       if p.requires_grad)
+    print(f"\n  Device        : {device}")
+    print(f"  Model         : LeNet-5")
+    print(f"  Total params  : {total_params:,}")
+
+    # ─────────────────────────────────────────────────────
+    if args.mode == "train":
+        train_loader, test_loader = get_data_loaders()
+        history = train(model, device, train_loader, test_loader)
+        save_weights_pt(model)
+        save_weights_json(model, history)
+
+    elif args.mode == "evaluate":
+        model  = load_weights(model, device, source=args.weights)
+        _, test_loader = get_data_loaders()
+        _, acc = evaluate(model, device, test_loader)
+        print(f"  Test Accuracy : {acc*100:.2f}%")
+
+    elif args.mode == "test":
+        if args.image is None:
+            parser.error("--image/-i is required for 'test' mode")
+        model = load_weights(model, device, source=args.weights)
+        predict_image(model, device, args.image)
 
 
 if __name__ == "__main__":
-	raise SystemExit(main())
+    main()
