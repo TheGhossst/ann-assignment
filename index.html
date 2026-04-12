@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Digit Canvas</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">MNIST digit recognizer</p>
+      <h1>Draw a digit.<br><em>Watch it think.</em></h1>
+      <p class="hero-copy">
+        A LeNet-5 model runs entirely in your browser — sketch any
+        handwritten digit and see the live probability scores update as you draw.
+      </p>
+    </section>
+
+    <section class="workspace">
+      <article class="panel canvas-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-label">Drawing board</p>
+            <p class="panel-status" id="model-status">Loading checkpoint…</p>
+          </div>
+          <button class="ghost-button" id="clear-button" type="button">
+            ↺ Clear
+          </button>
+        </div>
+
+        <div class="canvas-frame">
+          <canvas
+            id="digit-canvas"
+            width="360"
+            height="360"
+            aria-label="Canvas for drawing a handwritten digit"
+            role="img"
+          ></canvas>
+        </div>
+
+        <div class="hint-row">
+          <span>Draw one centered digit</span>
+          <span>
+            Press <kbd>C</kbd> or <kbd>Esc</kbd> to clear
+          </span>
+        </div>
+      </article>
+
+      <aside class="panel results-panel" aria-live="polite">
+        <p class="panel-label">Live prediction</p>
+
+        <div class="prediction-hero">
+          <div>
+            <div class="prediction-digit" id="prediction-digit">—</div>
+            <p class="prediction-copy" id="prediction-confidence">Waiting for a digit.</p>
+          </div>
+          <div class="prediction-chip" id="prediction-chip">Draw to begin</div>
+        </div>
+
+        <p class="chart-label">Probability distribution</p>
+        <div class="probability-chart" id="probabilities"></div>
+      </aside>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

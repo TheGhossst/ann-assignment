@@ -78,3 +78,19 @@ For best results, use a single centered digit with minimal background clutter.
 - `setup.ps1` bootstraps the Windows virtual environment and installs dependencies.
 - `requirements.txt` lists the Python packages used by the project.
 - `data/MNIST` is where the MNIST dataset is downloaded.
+
+## Browser Digit Demo
+
+The repository also includes a small browser front end that lets you draw a digit on a canvas and runs the saved LeNet-5 checkpoint in JavaScript.
+
+Make sure you have completed `./setup.ps1` first so the local Python runtime is available for the static server.
+
+Start a local static server from the repository root:
+
+```powershell
+.\runweb.ps1
+```
+
+Then open `http://localhost:8000/` in your browser.
+
+The page loads `lenet5_weights.json`, preprocesses the drawing with the same crop and normalization steps used by the Python inference path, and updates the probabilities live as you draw.
