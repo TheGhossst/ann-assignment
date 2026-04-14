@@ -133,6 +133,15 @@ Image & Actual class & Predicted class & Confidence \\
 \end{tabular}
 \end{table}
 
+The most useful training graphs for this project are the loss curve and the accuracy curve, because they show how quickly the model converged and whether validation performance stayed close to training performance. The plot below is generated from the real 30-epoch training history saved in \texttt{lenet5\_weights.json}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../images/training_curves.png}
+\caption{Training and validation loss and accuracy over 30 epochs.}
+\label{fig:training-curves}
+\end{figure}
+
 \section{Conclusion}
 This project demonstrates that a LeNet-5 style convolutional neural network is effective for MNIST digit recognition. The dataset is simple enough for a compact model, yet it still reveals where ambiguity in handwriting can challenge the classifier. The results show that the model is highly reliable on most digits, while a few visually similar samples remain difficult cases.
 

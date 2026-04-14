@@ -1,2 +1,17 @@
 venv/
 __pycache__/
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+*.lof
+*.lot
+
+*.swp
+*.DS_Store
+Thumbs.db
