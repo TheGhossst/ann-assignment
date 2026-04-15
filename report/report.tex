@@ -133,16 +133,25 @@ Image & Actual class & Predicted class & Confidence \\
 \end{tabular}
 \end{table}
 
-The most useful training graphs for this project are the loss curve and the accuracy curve, because they show how quickly the model converged and whether validation performance stayed close to training performance. The plot below is generated from the real 30-epoch training history saved in \texttt{lenet5\_weights.json}.
+The most useful curves for this project are the loss curve and the accuracy curve, because they show how quickly the model converged and how well it performed on held-out data. The plot below is generated from the real 30-epoch history saved in \texttt{lenet5\_weights.json}. In this code, the MNIST test split is used for epoch-by-epoch evaluation, so these are test-set evaluation curves rather than a separate validation split.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.98\linewidth]{../images/training_curves.png}
-\caption{Training and validation loss and accuracy over 30 epochs.}
+\caption{Training and test-set loss and accuracy over 30 epochs.}
 \label{fig:training-curves}
 \end{figure}
 
 \section{Conclusion}
 This project demonstrates that a LeNet-5 style convolutional neural network is effective for MNIST digit recognition. The dataset is simple enough for a compact model, yet it still reveals where ambiguity in handwriting can challenge the classifier. The results show that the model is highly reliable on most digits, while a few visually similar samples remain difficult cases.
+
+The confusion matrix below is computed from the real 10,000-image MNIST test split using the trained model weights. It shows that most predictions fall on the diagonal, with only small off-diagonal errors between visually similar digits.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../images/confusion_matrix.png}
+\caption{Confusion matrix on the real MNIST test set, where rows are actual classes and columns are predicted classes.}
+\label{fig:confusion-matrix}
+\end{figure}
 
 \end{document}
