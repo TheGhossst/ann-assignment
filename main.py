@@ -1,4 +1,3 @@
-# ── Network architecture ───────────────────────────────────
 IN_CHANNELS       = 1        # Greyscale images  → 1 channel
 NUM_CLASSES       = 10       # Digits 0-9
 
@@ -12,7 +11,7 @@ KERNEL_SIZE       = 5        # All convolution kernels are 5×5
 POOL_SIZE         = 2        # Average-pooling window  2×2
 POOL_STRIDE       = 2        # Non-overlapping pooling
 
-# ── Training hyper-parameters ─────────────────────────────
+
 BATCH_SIZE        = 64       # Mini-batch size
 LEARNING_RATE     = 1e-3     # Adam initial learning rate
 NUM_EPOCHS        = 30       # Training epochs
@@ -20,13 +19,12 @@ WEIGHT_DECAY      = 1e-4     # L2 regularisation coefficient
 LR_STEP_SIZE      = 5        # Decay LR every N epochs
 LR_GAMMA          = 0.5      # LR multiplier at each step
 
-# ── Normalisation constants (MNIST statistics) ────────────
 NORM_MEAN         = (0.1307,)
 NORM_STD          = (0.3081,)
 
-# ── Persistence ───────────────────────────────────────────
+
 WEIGHTS_PT_PATH   = "lenet5_weights.pth"   # PyTorch checkpoint
-WEIGHTS_JSON_PATH = "lenet5_weights.json"  # JSON snapshot
+WEIGHTS_JSON_PATH = "lenet5_weights.json"
 
 import os, sys, json, time, argparse
 import numpy as np
@@ -197,9 +195,7 @@ def evaluate(model, device, loader, criterion=None):
     return avg_loss, accuracy
 
 
-# ─────────────────────────────────────────────────────────
-#  Saving Weights
-# ─────────────────────────────────────────────────────────
+
 def save_weights_pt(model):
     """Save full model state-dict as a .pth file."""
     torch.save(model.state_dict(), WEIGHTS_PT_PATH)
@@ -306,9 +302,6 @@ def predict_image(model, device, image_path):
         print(f"    {digit}  {bar:<30}  {p*100:5.2f}%")
 
 
-# ─────────────────────────────────────────────────────────
-#  CLI Entry-point
-# ─────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(
         description="LeNet-5 MNIST – Train, Evaluate, or Test")
@@ -342,14 +335,12 @@ def main():
 
     model = LeNet5().to(device)
 
-    # ── Count parameters ──────────────────────────────────
     total_params = sum(p.numel() for p in model.parameters()
                        if p.requires_grad)
     print(f"\n  Device        : {device}")
     print(f"  Model         : LeNet-5")
     print(f"  Total params  : {total_params:,}")
 
-    # ─────────────────────────────────────────────────────
     if args.mode == "train":
         train_loader, test_loader = get_data_loaders()
         history = train(model, device, train_loader, test_loader)
